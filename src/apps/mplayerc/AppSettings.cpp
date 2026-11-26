@@ -759,6 +759,8 @@ void CAppSettings::ResetSettings()
 	bToggleShaderScreenSpace = false;
 
 	fFastSeek = true;
+	bAutoAVResync = false;
+	nAutoAVResyncMinutes = 15;
 	bHideWindowedMousePointer = false;
 	nMinMPlsDuration = 3;
 	fMiniDump = false;
@@ -1442,6 +1444,8 @@ void CAppSettings::LoadSettings(bool bForce/* = false*/)
 	profile.ReadBool(IDS_R_SETTINGS, IDS_RS_TOGGLESHADERSSCREENSPACE, bToggleShaderScreenSpace);
 
 	profile.ReadBool(IDS_R_SETTINGS, IDS_RS_FASTSEEK_KEYFRAME, fFastSeek);
+	profile.ReadBool(IDS_R_SETTINGS, L"AutoAVResync", bAutoAVResync);
+	profile.ReadInt(IDS_R_SETTINGS, L"AutoAVResyncMinutes", nAutoAVResyncMinutes, 1, 120);
 	profile.ReadBool(IDS_R_SETTINGS, IDS_RS_HIDE_WINDOWED_MOUSE_POINTER, bHideWindowedMousePointer);
 	profile.ReadInt(IDS_R_SETTINGS, IDS_RS_MIN_MPLS_DURATION, nMinMPlsDuration, 0, 20);
 	profile.ReadBool(IDS_R_SETTINGS, IDS_RS_MINI_DUMP, fMiniDump);
@@ -1801,6 +1805,8 @@ void CAppSettings::SaveSettings()
 
 	profile.WriteString(IDS_R_SETTINGS, IDS_RS_LANGUAGE, CMPlayerCApp::languageResources[iLanguage].strcode);
 	profile.WriteBool(IDS_R_SETTINGS, IDS_RS_FASTSEEK_KEYFRAME, fFastSeek);
+	profile.WriteBool(IDS_R_SETTINGS, L"AutoAVResync", bAutoAVResync);
+	profile.WriteInt(IDS_R_SETTINGS, L"AutoAVResyncMinutes", nAutoAVResyncMinutes);
 	profile.WriteBool(IDS_R_SETTINGS, IDS_RS_HIDE_WINDOWED_MOUSE_POINTER, bHideWindowedMousePointer);
 	profile.WriteInt(IDS_R_SETTINGS, IDS_RS_MIN_MPLS_DURATION, nMinMPlsDuration);
 	profile.WriteBool(IDS_R_SETTINGS, IDS_RS_MINI_DUMP, fMiniDump);

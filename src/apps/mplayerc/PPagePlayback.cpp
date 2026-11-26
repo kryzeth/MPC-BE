@@ -60,6 +60,14 @@ void CPPagePlayback::DoDataExchange(CDataExchange* pDX)
 	DDX_Check(pDX, IDC_CHECK8, m_bRememberSelectedTracks);
 
 	DDX_Check(pDX, IDC_CHECK3, m_bFastSeek);
+
+	// Older translated resources may not contain these controls.
+	if (GetDlgItem(IDC_AUTO_AV_RESYNC)
+			&& GetDlgItem(IDC_AUTO_AV_RESYNC_INTERVAL)) {
+		DDX_Check(pDX, IDC_AUTO_AV_RESYNC, m_bAutoAVResync);
+		DDX_Text(pDX, IDC_AUTO_AV_RESYNC_INTERVAL, m_nAutoAVResyncMinutes);
+		DDV_MinMaxInt(pDX, m_nAutoAVResyncMinutes, 1, 120);
+	}
 	DDX_Check(pDX, IDC_CHECK5, m_bPauseMinimizedVideo);
 }
 
@@ -69,6 +77,9 @@ BEGIN_MESSAGE_MAP(CPPagePlayback, CPPageBase)
 	ON_UPDATE_COMMAND_UI(IDC_STATIC1, OnUpdateLoopNum)
 	ON_UPDATE_COMMAND_UI(IDC_EDIT2, OnUpdateTrackOrder)
 	ON_UPDATE_COMMAND_UI(IDC_EDIT3, OnUpdateTrackOrder)
+	ON_BN_CLICKED(IDC_AUTO_AV_RESYNC, OnAutoAVResyncChanged)
+	ON_EN_CHANGE(IDC_AUTO_AV_RESYNC_INTERVAL, OnAutoAVResyncChanged)
+	ON_UPDATE_COMMAND_UI(IDC_AUTO_AV_RESYNC_INTERVAL, OnUpdateAutoAVResyncInterval)
 END_MESSAGE_MAP()
 
 // CPPagePlayback message handlers
@@ -119,6 +130,8 @@ BOOL CPPagePlayback::OnInitDialog()
 	m_bRememberSelectedTracks = s.bRememberSelectedTracks;
 
 	m_bFastSeek = s.fFastSeek;
+	m_bAutoAVResync = s.bAutoAVResync;
+	m_nAutoAVResyncMinutes = s.nAutoAVResyncMinutes;
 	m_bPauseMinimizedVideo = s.bPauseMinimizedVideo;
 
 	CorrectCWndWidth(GetDlgItem(IDC_CHECK4));
@@ -130,7 +143,9 @@ BOOL CPPagePlayback::OnInitDialog()
 
 BOOL CPPagePlayback::OnApply()
 {
-	UpdateData();
+	if (!UpdateData(TRUE)) {
+		return FALSE;
+	}
 
 	CAppSettings& s = AfxGetAppSettings();
 
@@ -154,6 +169,12 @@ BOOL CPPagePlayback::OnApply()
 	s.bRememberSelectedTracks = !!m_bRememberSelectedTracks;
 
 	s.fFastSeek = !!m_bFastSeek;
+
+	if (GetDlgItem(IDC_AUTO_AV_RESYNC)
+			&& GetDlgItem(IDC_AUTO_AV_RESYNC_INTERVAL)) {
+		s.bAutoAVResync = !!m_bAutoAVResync;
+		s.nAutoAVResyncMinutes = m_nAutoAVResyncMinutes;
+	}
 	s.bPauseMinimizedVideo = !!m_bPauseMinimizedVideo;
 
 	return __super::OnApply();
@@ -162,6 +183,16 @@ BOOL CPPagePlayback::OnApply()
 void CPPagePlayback::OnBnClickedRadio12(UINT nID)
 {
 	SetModified();
+}
+
+void CPPagePlayback::OnAutoAVResyncChanged()
+{
+	SetModified();
+}
+
+void CPPagePlayback::OnUpdateAutoAVResyncInterval(CCmdUI* pCmdUI)
+{
+	pCmdUI->Enable(!!IsDlgButtonChecked(IDC_AUTO_AV_RESYNC));
 }
 
 void CPPagePlayback::OnUpdateLoopNum(CCmdUI* pCmdUI)

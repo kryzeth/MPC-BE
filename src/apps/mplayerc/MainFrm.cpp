@@ -2555,7 +2555,11 @@ void CMainFrame::OnTimer(UINT_PTR nIDEvent)
 						g_bExternalSubtitleTime = false;
 
 						m_pMS->GetDuration(&rtDur);
-						m_pMS->GetCurrentPosition(&rtNow);
+						if (SUCCEEDED(m_pMS->GetCurrentPosition(&rtNow))) {
+							if (UpdateAutoResync(rtNow, rtDur)) {
+								return;
+							}
+						}
 
 						if (m_abRepeatPositionBEnabled && rtNow >= m_abRepeatPositionB) {
 							PerformABRepeat();
@@ -8406,6 +8410,7 @@ void CMainFrame::OnPlayPlayPause()
 
 void CMainFrame::OnPlayStop()
 {
+	ResetAutoResync();
 	if (m_eMediaLoadState == MLS_LOADED) {
 		if (GetPlaybackMode() == PM_FILE) {
 			LONGLONG pos = 0;
@@ -17067,6 +17072,181 @@ REFERENCE_TIME const CMainFrame::GetClosestKeyFrame(REFERENCE_TIME rtTarget)
 	return ret;
 }
 
+void CMainFrame::ResetAutoResync()
+{
+	m_rtAutoResyncElapsed = 0;
+	m_rtAutoResyncLastPos = -1;
+	m_rtAutoResyncTarget = -1;
+	m_autoResyncLastTick = 0;
+	m_nAutoResyncInterval = 0;
+}
+
+bool CMainFrame::UpdateAutoResync(
+	REFERENCE_TIME rtNow,
+	REFERENCE_TIME rtDuration)
+{
+	// SeekTo() invokes the playback timer itself.
+	// Do not allow a seek to recursively trigger another seek.
+	if (m_bAutoResyncSeeking) {
+		return false;
+	}
+
+	const auto& s = AfxGetAppSettings();
+
+	if (!s.bAutoAVResync
+			|| m_eMediaLoadState != MLS_LOADED
+			|| GetPlaybackMode() != PM_FILE
+			|| m_bAudioOnly
+			|| m_bShockwaveGraph
+			|| rtDuration <= 0) {
+		ResetAutoResync();
+		return false;
+	}
+
+	const int interval = s.nAutoAVResyncMinutes;
+
+	if (interval < 1 || interval > 120) {
+		ResetAutoResync();
+		return false;
+	}
+
+	// Changing the configured interval starts a fresh countdown.
+	if (m_nAutoResyncInterval != interval) {
+		ResetAutoResync();
+		m_nAutoResyncInterval = interval;
+	}
+
+	// DirectShow media time is measured in 100-nanosecond units.
+	constexpr REFERENCE_TIME kSecond = 10000000LL;
+	constexpr REFERENCE_TIME kMillisecond = 10000LL;
+
+	const REFERENCE_TIME rtInterval = interval * 60LL * kSecond;
+
+	// Require a small amount of forward progress past the keyframe.
+	constexpr REFERENCE_TIME rtMinOvershoot = 10 * kMillisecond;
+	constexpr REFERENCE_TIME rtMaxOvershoot = 100 * kMillisecond;
+
+	if (GetTimeFormat() != TIME_FORMAT_MEDIA_TIME) {
+		ResetAutoResync();
+		return false;
+	}
+
+	// Suspend the countdown during pauses, buffering, A/B repeat,
+	// end-of-stream handling, and seek bar dragging.
+	if (GetMediaState() != State_Running
+			|| m_bBuffering
+			|| m_bEndOfStream
+			|| m_bGraphEventComplete
+			|| m_abRepeatPositionAEnabled
+			|| m_abRepeatPositionBEnabled
+			|| ::GetCapture() == m_wndSeekBar.GetSafeHwnd()) {
+		m_rtAutoResyncLastPos = -1;
+		m_rtAutoResyncTarget = -1;
+		m_autoResyncLastTick = 0;
+		return false;
+	}
+
+	const ULONGLONG tick = ::GetTickCount64();
+
+	// Establish a baseline after opening, seeking, or resuming.
+	if (m_rtAutoResyncLastPos < 0) {
+		m_rtAutoResyncLastPos = rtNow;
+		m_autoResyncLastTick = tick;
+		return false;
+	}
+
+	const REFERENCE_TIME rtDelta = rtNow - m_rtAutoResyncLastPos;
+	const REFERENCE_TIME rtWallDelta =
+		static_cast<REFERENCE_TIME>(tick - m_autoResyncLastTick)
+		* kMillisecond;
+
+	m_rtAutoResyncLastPos = rtNow;
+	m_autoResyncLastTick = tick;
+
+	// Detect discontinuities from seek paths that bypass SeekTo().
+	if (rtDelta < -100 * kMillisecond
+			|| rtDelta > 2 * rtWallDelta + 500 * kMillisecond) {
+		ResetAutoResync();
+		m_nAutoResyncInterval = interval;
+		m_rtAutoResyncLastPos = rtNow;
+		m_autoResyncLastTick = tick;
+		return false;
+	}
+
+	// Count actual media progress, not time spent paused.
+	if (rtDelta > 0) {
+		m_rtAutoResyncElapsed += rtDelta;
+	}
+
+	if (m_rtAutoResyncElapsed < rtInterval) {
+		return false;
+	}
+
+	// If a target keyframe was missed, wait for the following one.
+	// Never rewind by more than the configured tolerance.
+	if (m_rtAutoResyncTarget >= 0
+			&& rtNow - m_rtAutoResyncTarget > rtMaxOvershoot) {
+		DLog(L"[AutoAVResync] Missed keyframe; selecting next");
+		m_rtAutoResyncTarget = -1;
+	}
+
+	// Select the next strictly upcoming keyframe.
+	if (m_rtAutoResyncTarget < 0) {
+		MatroskaLoadKeyFrames();
+
+		if (m_kfs.empty()) {
+			DLog(L"[AutoAVResync] No keyframe index available");
+			ResetAutoResync();
+			return false;
+		}
+
+		const auto it = std::upper_bound(
+			m_kfs.cbegin(), m_kfs.cend(), rtNow);
+
+		if (it == m_kfs.cend() || *it >= rtDuration) {
+			DLog(L"[AutoAVResync] No upcoming keyframe");
+			ResetAutoResync();
+			return false;
+		}
+
+		m_rtAutoResyncTarget = *it;
+
+		DLog(L"[AutoAVResync] Target keyframe: %I64d ms",
+			m_rtAutoResyncTarget / kMillisecond);
+
+		return false;
+	}
+
+	const REFERENCE_TIME rtOvershoot = rtNow - m_rtAutoResyncTarget;
+
+	if (rtOvershoot < rtMinOvershoot) {
+		return false;
+	}
+
+	// At this point the target was passed by 10-100 ms.
+	const REFERENCE_TIME rtTarget = m_rtAutoResyncTarget;
+
+	if (!ValidateSeek(rtTarget, rtDuration)) {
+		ResetAutoResync();
+		return false;
+	}
+
+	DLog(L"[AutoAVResync] Seeking to %I64d ms (rewind: %I64d ms)",
+		rtTarget / kMillisecond,
+		rtOvershoot / kMillisecond);
+
+	// Reset before seeking so nested timer calls cannot retrigger it.
+	ResetAutoResync();
+	m_bAutoResyncSeeking = true;
+
+	// Use the standard seek path, but suppress the seek OSD.
+	SeekTo(rtTarget, false);
+
+	m_bAutoResyncSeeking = false;
+
+	return true;
+}
+
 void CMainFrame::SeekTo(REFERENCE_TIME rtPos, bool bShowOSD/* = true*/)
 {
 	const OAFilterState fs = GetMediaState();
@@ -17106,7 +17286,9 @@ void CMainFrame::SeekTo(REFERENCE_TIME rtPos, bool bShowOSD/* = true*/)
 			return;
 		}
 
-		m_pMS->SetPositions(&rtPos, AM_SEEKING_AbsolutePositioning, nullptr, AM_SEEKING_NoPositioning);
+		if (SUCCEEDED(m_pMS->SetPositions(&rtPos, AM_SEEKING_AbsolutePositioning, nullptr, AM_SEEKING_NoPositioning))) {
+			ResetAutoResync();
+		}
 
 		if (m_bUseReclock) {
 			// Crazy ReClock require delay between seek operation or causes crash in EVR :)
@@ -18090,6 +18272,7 @@ void CMainFrame::DisplayCurrentChannelInfo()
 
 void CMainFrame::SetLoadState(MPC_LOADSTATE iState)
 {
+	ResetAutoResync();
 	m_eMediaLoadState = iState;
 	SendAPICommand(CMD_STATE, L"%d", m_eMediaLoadState);
 

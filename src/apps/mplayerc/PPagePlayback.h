@@ -56,6 +56,8 @@ public:
 	BOOL		m_fReportFailedPins = FALSE;
 
 	BOOL		m_bFastSeek = FALSE;
+	BOOL		m_bAutoAVResync = FALSE;
+	int			m_nAutoAVResyncMinutes = 15;
 	BOOL		m_bPauseMinimizedVideo = FALSE;
 
 	enum { IDD = IDD_PPAGEPLAYBACK };
@@ -70,5 +72,7 @@ protected:
 public:
 	afx_msg void OnBnClickedRadio12(UINT nID);
 	afx_msg void OnUpdateLoopNum(CCmdUI* pCmdUI);
+	afx_msg void OnAutoAVResyncChanged();
+	afx_msg void OnUpdateAutoAVResyncInterval(CCmdUI* pCmdUI);
 	afx_msg void OnUpdateTrackOrder(CCmdUI* pCmdUI);
 };

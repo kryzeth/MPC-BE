@@ -712,6 +712,17 @@ public:
 	bool GetNeighbouringKeyFrames(REFERENCE_TIME rtTarget, std::pair<REFERENCE_TIME, REFERENCE_TIME>& keyframes) const;
 	REFERENCE_TIME const GetClosestKeyFrame(REFERENCE_TIME rtTarget);
 	void SeekTo(REFERENCE_TIME rt, bool bShowOSD = true);
+
+	// Automatic keyframe-based A/V resynchronization.
+	REFERENCE_TIME m_rtAutoResyncElapsed = 0;
+	REFERENCE_TIME m_rtAutoResyncLastPos = -1;
+	REFERENCE_TIME m_rtAutoResyncTarget = -1;
+	ULONGLONG m_autoResyncLastTick = 0;
+	int m_nAutoResyncInterval = 0;
+	bool m_bAutoResyncSeeking = false;
+
+	void ResetAutoResync();
+	bool UpdateAutoResync(REFERENCE_TIME rtNow, REFERENCE_TIME rtDuration);
 	bool ValidateSeek(REFERENCE_TIME rtPos, REFERENCE_TIME rtStop);
 	void MatroskaLoadKeyFrames();
 

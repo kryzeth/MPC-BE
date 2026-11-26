@@ -761,6 +761,8 @@ public:
 	int				nJumpDistM;
 	int				nJumpDistL;
 	bool			fFastSeek;
+	bool			bAutoAVResync;
+	int			nAutoAVResyncMinutes;
 	bool			fDontUseSearchInFolder;
 	bool			fPreventMinimize;
 	bool			bPauseMinimizedVideo;

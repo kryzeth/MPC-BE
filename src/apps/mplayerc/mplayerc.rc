@@ -359,6 +359,10 @@ BEGIN
     CONTROL         "Fast seek (on keyframe)",IDC_CHECK3,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,10,209,264,9
     CONTROL         "Pause the video playback when minimized",IDC_CHECK5,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,10,221,280,9
+    CONTROL         "Enable automatic A/V resynchronization",IDC_AUTO_AV_RESYNC,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,10,233,280,9
+    LTEXT           "Resynchronization interval (minutes):",IDC_STATIC,20,248,150,8
+    EDITTEXT        IDC_AUTO_AV_RESYNC_INTERVAL,175,245,35,13,ES_AUTOHSCROLL | ES_NUMBER
 END
 
 IDD_PPAGESUBRENDERING DIALOGEX 0, 0, 296, 264
